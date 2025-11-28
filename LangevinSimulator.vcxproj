@@ -104,6 +104,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -128,6 +129,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="LangevinSimulator.cpp" />
+    <ClCompile Include="PhaseCloud.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="FixedVector.h" />
+    <ClInclude Include="PhaseCloud.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

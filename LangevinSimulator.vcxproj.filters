@@ -18,5 +18,16 @@
     <ClCompile Include="LangevinSimulator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="PhaseCloud.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="FixedVector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PhaseCloud.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

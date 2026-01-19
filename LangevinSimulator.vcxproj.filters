@@ -29,5 +29,20 @@
     <ClInclude Include="PhaseCloud.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="BumpDistribution.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Bump.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Bumps.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="EntropyCalculator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="data\bumps-1x1-0.csv" />
   </ItemGroup>
 </Project>

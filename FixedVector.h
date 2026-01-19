@@ -2,7 +2,7 @@
 
 #include <array>
 
-template <size_t N>
+template <int N>
 requires (N > 0)
 struct FixedVector {
 
@@ -15,7 +15,7 @@ public:
 
   inline FixedVector(std::array<double, N> &&coords) noexcept : coords(coords) {}
 
-  inline constexpr double operator[](size_t index) noexcept {
+  inline constexpr double operator[](int index) noexcept {
     return coords[index];
   }
 

@@ -9,11 +9,11 @@ private:
   int halfSize;
 
   inline int getPositionIndex(int pointIndex, int particleIndex, int spatialCoordinateIndex) const noexcept {
-    return spatialCoordinateIndex * (numberOfParticles * numberOfPoints) + particleIndex * numberOfPoints + pointIndex;
+    return pointIndex * (numberOfParticles * numberOfPoints) + particleIndex * numberOfPoints + spatialCoordinateIndex;
   }
 
   inline int getVelocityIndex(int pointIndex, int particleIndex, int spatialCoordinateIndex) const noexcept {
-    return halfSize + (spatialCoordinateIndex * (numberOfParticles * numberOfPoints) + particleIndex * numberOfPoints + pointIndex);
+    return halfSize + (pointIndex * (numberOfParticles * numberOfPoints) + particleIndex * numberOfPoints + spatialCoordinateIndex);
   }
 
 public:

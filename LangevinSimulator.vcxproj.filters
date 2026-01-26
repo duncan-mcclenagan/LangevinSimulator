@@ -23,9 +23,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="FixedVector.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="PhaseCloud.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -39,6 +36,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="EntropyCalculator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ext\rapidcsv\src\rapidcsv.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TensorView.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ArraySpan.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

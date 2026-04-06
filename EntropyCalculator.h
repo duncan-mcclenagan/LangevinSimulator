@@ -5,33 +5,24 @@
 #include <unordered_map>
 #include "PhaseCloud.h"
 #include "BumpDistribution.h"
-#include "Bump.h"
 
 class EntropyCalculator {
 private:
-  std::unordered_map<int, int> bumpAccumulants{};
+  std::unordered_map<void*, int> bumpAccumulants{};
 
 public:
-  template<int NBumps>
-  double calculateEntropy(const PhaseCloud& phaseCloud, const BumpDistribution<NBumps>& bumps) {
-    if (phaseCloud.numberOfParticles != 1) {
-      throw std::invalid_argument("Phase cloud number of particles must be one.");
-    }
-    if (phaseCloud.spatialDimension != 1) {
-      throw std::invalid_argument("Phase cloud spatial dimension must be one.");
-    }
+  double calculateEntropy(const PhaseCloud& phaseCloud, const BumpDistribution& bumps) {
+    assert(phaseCloud.numberOfParticles == bumps.numParticles);
+    assert(phaseCloud.spatialDimension == bumps.numSpatialCoords);
 
     bumpAccumulants.clear();
 
-    const double* position = phaseCloud.rawPositionConst();
     int totalInBumps{ 0 };
-    for (int i{ 0 }; i < phaseCloud.numberOfPoints; ++i, ++position) {
-      int segment{ bumps.getNearestSegmentIndex(*position) };
-      auto bump{ bumps.getAtSegmentIndex(segment) };
-
-      if (bump.inBump(*position)) {
-        int currentCount{ bumpAccumulants.contains(segment) ? bumpAccumulants.at(segment) : 0 };
-        bumpAccumulants.insert_or_assign(segment, currentCount + 1);
+    for (auto position : phaseCloud.enumeratePointPositionsConst()) {
+      void* bump{ bumps.getBumpIdentifier(position) };
+      if (bump != nullptr) {
+        int currentCount{ bumpAccumulants.contains(bump) ? bumpAccumulants.at(bump) : 0 };
+        bumpAccumulants.insert_or_assign(bump, currentCount + 1);
         ++totalInBumps;
       }
     }

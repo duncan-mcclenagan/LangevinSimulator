@@ -44,7 +44,7 @@
     <ClInclude Include="TensorView.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ArraySpan.h">
+    <ClInclude Include="CoordinateSpan.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

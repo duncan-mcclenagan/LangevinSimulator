@@ -8,28 +8,23 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
-#include "ArraySpan.h"
+#include "CoordinateSpan.h"
 #include "Bump.h"
 #include "ext/rapidcsv/src/rapidcsv.h"
 
-template <int NSpatialCoords = 2>
-requires (NSpatialCoords > 0)
 class BumpDistribution {
-private:
-  // @todo Add inner const qualifiers (??)
-  const std::vector<double> squareWidths;
-  const std::vector<double> heights;
-  const std::vector<std::array<double, NSpatialCoords>> positions;
-  const std::unordered_map<ArraySpan<int, NSpatialCoords>, int> segmentToBumpId;
-
-  const double inverseSegmentSpacing;
+public:
   const int numBumps;
   const int numParticles;
   const int numSpatialCoords;
+private:
+  const std::vector<double> positions;
+  const std::unordered_map<const double*, BumpData> bumpsByPosition;
 
-  BumpDistribution(std::vector<double> squareWidths,
-    std::vector<double> heights,
-    std::vector<std::array<double, NSpatialCoords>> positions,
+  const double inverseSegmentSpacing;
+
+  BumpDistribution(std::vector<double> positions,
+    std::unordered_map<const double*, BumpData> bumpsByPosition,
     double inverseSegmentSpacing,
     int numBumps,
     int numParticles,
@@ -37,6 +32,8 @@ private:
     : squareWidths(squareWidths),
       heights(heights),
       positions(positions),
+      discretePositions(discretePositions),
+      bumpsByPosition(bumpsByPosition),
       inverseSegmentSpacing(inverseSegmentSpacing),
       numBumps(numBumps),
       numParticles(numParticles),
@@ -45,10 +42,10 @@ private:
 
 public:
 
-  std::optional<int> getCandidateBumpId(const ArraySpan<double, NSpatialCoords> particlePositions) const {
+  std::optional<BumpData&> getBumpInSegment(const CoordinateSpan<double> particlePositions) const {
     assert(particlePositions.size() == numParticles);
 
-    static thread_local std::vector<std::array<int, NSpatialCoords>> segmentId{};
+    static thread_local std::vector<int> segmentId{};
     if (segmentId.size() < particlePositions.size()) {
       segmentId.reserve(particlePositions.size());
     }
@@ -62,18 +59,18 @@ public:
       }
     }
 
-    ArraySpan<int, NSpatialCoords> segmentIdSpan{ segmentId.data(), numParticles };
-    return segmentToBumpId.contains(segmentIdSpan)) ? segmentToBumpId.at(segmentIdSpan) : std::nullopt;
+    CoordinateSpan<int, NSpatialCoords> segmentIdSpan{ segmentId.data(), numParticles };
+    return bumpsByPosition.contains(segmentIdSpan)) ? bumpsByPosition.at(segmentIdSpan) : std::nullopt;
   }
 
-  std::optional<int> getBumpId(const ArraySpan<double, NSpatialCoords> particlePositions) const {
+  std::optional<BumpData&> getBump(const CoordinateSpan<double, NSpatialCoords> particlePositions) const {
     const auto candidateBumpId{ getBumpId(particlePositions) };
     if (candidateBumpId == std::nullopt) {
       return std::nullopt;
     }
 
     const double bumpSquareWidth{ squareWidths[candidateBumpId] };
-    const ArraySpan<double, NSpatialCoords> bumpPosition{ &positions[candidateBumpId], numParticles };
+    const CoordinateSpan<double, NSpatialCoords> bumpPosition{ &positions[candidateBumpId], numParticles };
 
     double squareDistance{ 0 };
     for (int i{ 0 }; i < numParticles; ++i) {
@@ -86,7 +83,7 @@ public:
     return (squareDistance <= bumpSquareWidth) ? candidateBumpId : std::nullopt;
   }
 
-  void computeForce(const ArraySpan<double, NSpatialCoords> particlePositions, ArraySpan<double, NSpatialCoords> forceOutput) const {
+  void computeForce(const CoordinateSpan<double, NSpatialCoords> particlePositions, CoordinateSpan<double, NSpatialCoords> forceOutput) const {
     assert(particlePositions.size() == forceOutput.size() == numParticles);
 
     // Start by getting the candidate bump.
@@ -104,7 +101,7 @@ public:
     // calculate the square distance. If we're outside the bump, return a zero force
     // vector.
     const double bumpSquareWidth{ squareWidths[candidateBumpId] };
-    const ArraySpan<double, NSpatialCoords> bumpPosition{ &positions[candidateBumpId], numParticles };
+    const CoordinateSpan<double, NSpatialCoords> bumpPosition{ &positions[candidateBumpId], numParticles };
     double squareDistance{ 0 };
     for (int i{ 0 }; i < numParticles; ++i) {
       for (int j{ 0 }; j < NSpatialCoords; ++j) {
@@ -138,13 +135,79 @@ public:
     }
   }
 
+  void toFile(const char* filename) const {
+    // @todo Proper error handling...
+    rapidcsv::Document csv(filename);
+    csv.Clear();
+
+    const int widthIndex{ 0 };
+    const int heightIndex{ 1 };
+    const int startPositionIndex{ 2 };
+    csv.SetColumnName(widthIndex, "width");
+    csv.SetColumnName(heightIndex, "height");
+    for (int i{ 0 }, n{ startPositionIndex }; i < numParticles; ++i) {
+       for (int j{ 0 }; j < numSpatialCoords; ++j, ++n) {
+         csv.SetColumnName(n, getCsvCoordinateColumnName(i, j));
+       }
+    }
+
+    int i{ 0 };
+    for (const auto& [_, bumpData] : bumpsByPosition) {
+      csv.SetCell(widthIndex, i, std::sqrt(bumpData.squareWidth));
+      csv.SetCell(heightIndex, i, bumpData.height);
+      CoordinateSpan<const double> position{ bumpData.center, numParticles, numSpatialCoords };
+      for (int j{ 0 }, n{ startPositionIndex }; j < numParticles; ++j) {
+        for (int k{ 0 }; k < numSpatialCoords; ++k, ++n) {
+          csv.SetCell(n, i, position[j, k]);
+        }
+      }
+
+      ++i;
+    }
+  }
+
+  template<std::invocable<bool, double&, double&, CoordinateSpan<double>> BumpGenerator>
+  static BumpDistribution generate(int numParticles, int spatialDimension, double segmentSpacing, BumpGenerator generator) {
+    constexpr int defaultApprxNumBumps{ 100 };
+    // @todo Argument error handling.
+    std::vector<double> positions{};
+    std::unordered_map<const double*, BumpData> bumpsByPosition{};
+    const int coordinatesPerBump{ numParticles * spatialDimension };
+    positions.reserve(coordinatesPerBump * defaultApprxNumBumps);
+    positions.resize(coordinatesPerBump, 1);
+
+    double width{ 1 }, height{ 1 };
+    
+    int i{ 0 };
+    bool generateNewBump{ true };
+    while (generateNewBump) {
+      positions.resize(coordinatesPerBump);
+      double* positionStart{ &positions[i * coordinatesPerBump] };
+      CoordinateSpan<double> position(positionStart, numParticles, spatialDimension);
+      generateNewBump = generator(width, height, position);
+      if (bumpsByPosition.contains(positionStart)) {
+        throw std::runtime_error("Only one bump per segment permitted.");
+      }
+
+      bumpsByPosition.insert({ positionStart, BumpData(positionStart, width, height) });
+
+      ++i;
+    }
+
+    return BumpDistribution();
+  } 
+
   static BumpDistribution fromFile(const char* filename, double segmentSpacing) {
-    rapidcsv::Document csv(filename, rapidcsv::LabelParams(), rapidcsv::SeparatorParams(), rapidcsv::LineReaderParams(pSkipEmptyLines = true));
+    rapidcsv::Document csv(filename,
+      rapidcsv::LabelParams(),
+      rapidcsv::SeparatorParams(),
+      rapidcsv::ConverterParams(),
+      rapidcsv::LineReaderParams(false, false, true));
 
     int widthIndex{ csv.GetColumnIdx("width") };
-    int centerIndex{ csv.GetColumnIdx("center") };
-    if (widthIndex < 0 || centerIndex < 0) {
-      throw std::runtime_error("CSV file must contain 'width' and 'center' columns.");
+    int heightIndex{ csv.GetColumnIdx("height") };
+    if (widthIndex < 0 || heightIndex < 0) {
+      throw std::runtime_error("CSV file must contain 'width' and 'height' columns.");
     }
 
     std::vector<int> positionIndices{};
@@ -177,23 +240,41 @@ public:
     assert(spatialDimension.has_value());
 
     int numBumps{ csv.GetRowCount() };
-    // @todo Proper trapping here...
-    std::vector<double> widths{ csv.GetColumn<double>("width") };
-    std::vector<double> heights{ csv.GetColumn<double>("height") };
-    if (!(widths.size() == heights.size() == numBumps)) {
-      throw std::runtime_error("Inconsistent or invalid number of entries in width/height columns.");
+    // @todo Something cleaner here??
+    // @todo Proper trapping with invalid conversions during GetCell().
+    std::vector<double> positions{};
+    std::unordered_map<const double*, BumpData> bumpsByPosition{};
+    bumpsByPosition.reserve(numBumps);
+    positions.reserve(spatialDimension.value() * numParticles * numBumps);
+    for (int i{ 0 }; i < numBumps; ++i) {
+      double width{ csv.GetCell<double>(widthIndex, i) };
+      double height{ csv.GetCell<double>(height, i)};
+
+      double* positionStart{ &positions[positions.size()] };
+      for (int j{ 0 }, n{ 0 }; j < numParticles; ++j) {
+        for (int k{ 0 }; k < spatialDimension; ++k, ++n) {
+          double positionComponent{ csv.GetCell<double>(positionIndices[n], i) };
+          positions.push_back(positionComponent);
+        }
+      }
+
+      CoordinateSpan<const double> position(positionStart, numParticles, spatialDimension.value());
+      if (bumpsByPosition.contains(position)) {
+        throw std::runtime_error("Input CSV contains multiple bumps in one segment.");
+      }
+      bumpsByPosition.insert({ position, Bump(position, width, height) });
+
+      return BumpDistribution();
     }
 
-    // @todo Something cleaner here??
-    std::vector<std::array<double, NSpatialCoords>> positions{};
-    for (int i{ 0 }; i < numBumps; ++i) {
-      for (int j{ 0 }; j < numParticles; ++j) {
-        for (int k{ 0 }; k < spatialDimension; ++k)
-      }
-    }
+
   }
 
 private:
+  void computeDiscreteCoordinates(CoordinateSpan<const double> coordinates, CoordinateSpan<int> discreteCoordinates) {
+
+  }
+
   static std::string getCsvCoordinateColumnName(int particleIndex, int spatialCoordinateIndex) {
     return "pos-" + std::to_string(particleIndex) + "-" + std::to_string(spatialCoordinateIndex);
   }

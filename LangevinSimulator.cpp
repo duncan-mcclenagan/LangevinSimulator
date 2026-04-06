@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iostream>
 #include <random>
+#include <vector>
 #include "Bump.h"
 #include "BumpDistribution.h"
 #include "EntropyCalculator.h"
@@ -11,17 +12,58 @@
 
 void runSimulation();
 double forceAt(double position);
-PhaseCloud createPhaseCloud(int numPoints, double centerVelocity, double centerPosition, double velocitySpread, double positionSpread);
+PhaseCloud createPhaseCloud(int numPoints, double velocitySpread, double positionSpread);
+
+class BumpGenerator {
+
+  const double segmentSpacing;
+  const double bumpExtent;
+  const double bumpFuzz;
+  const int numParticles;
+  const int spatialDimension;
+
+  std::mt19937_64 generator;
+  std::uniform_real_distribution<double> uniformDist;
+
+  std::vector<double> baseline;
+
+  BumpGenerator(double segmentSpacing, double bumpExtent, double bumpFuzz, int numParticles, int spatialDimension)
+    : segmentSpacing{ segmentSpacing },
+    bumpExtent{ bumpExtent },
+    bumpFuzz{ bumpFuzz },
+    numParticles{ numParticles },
+    spatialDimension{ spatialDimension },
+    baseline(numParticles * spatialDimension, -bumpExtent),
+    generator((std::random_device())()),
+    uniformDist(-1, -1)
+   {}
+
+  bool operator()(double& width, double& height, CoordinateSpan<double> position) {
+    
+    int currentBaselineCoord{ 0 };
+    double newBaselineCoordValue{};
+    // @todo This is wrong -- what to do with last value?
+    while (currentBaselineCoord < baseline.size() && (newBaselineCoordValue = baseline[currentBaselineCoord] + segmentSpacing) > bumpExtent) {
+      baseline[currentBaselineCoord] = 0;
+      ++currentBaselineCoord;
+    }
+  }
+
+};
 
 int main() {
   std::cout << "Welcome to the Langevin dynamics simulator!\n";
   runSimulation();
+
+  return 0;
 }
 
 void runSimulation() {
   constexpr double timeStep{ 2E-4 };
   constexpr int numSteps{ 50000 };
   constexpr int numPoints{ 10000 };
+  constexpr int spatialDimension{ 2 };
+  constexpr int numParticles{ 2 };
   
   constexpr double dampingCoefficient{ 0.03 };
   constexpr double beta{ 2E5 };
@@ -30,24 +72,26 @@ void runSimulation() {
   const double firstVelocityDiffusionCoeff{ std::exp(-dampingCoefficient * halfTimeStep) };
   const double secondVelocityDiffusionCoeff{ std::sqrt((1 - firstVelocityDiffusionCoeff * firstVelocityDiffusionCoeff) / (beta)) };
 
+  constexpr double velocitySpread{ 0.5 };
+  constexpr double positionSpread{ 1 };
+  auto phaseCloud{ createPhaseCloud(numPoints, velocitySpread, positionSpread) };
+
+  constexpr double segmentSpacing{ 0.1 };
+  constexpr double bumpExtent{ 10 };
+  auto bumps{ BumpDistribution::generate(numParticles, spatialDimension, segmentSpacing, BumpGenerator(segmentSpacing, bumpExtent, numParticles, spatialDimension)) };
+
+  EntropyCalculator entropyCalculator{};
+  const double initialEntropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps) };
+  std::cout << "Initial entropy: " << initialEntropy << "\n";
+
   std::random_device randomDevice;
   std::mt19937_64 generator(randomDevice());
   std::normal_distribution<double> normalDist(0, 1);
-
-  constexpr double centerVelocity{ 0.0 };
-  constexpr double centerPosition{ 0.0 };
-  constexpr double velocitySpread{ 0.5 };
-  constexpr double positionSpread{ 1 };
-  auto phaseCloud{ createPhaseCloud(numPoints, centerVelocity, centerPosition, velocitySpread, positionSpread) };
-  EntropyCalculator entropyCalculator{};
-  const double initialEntropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps) };
-
-  std::cout << "Initial entropy: " << initialEntropy << "\n";
-
   for (int i{ 0 }; i < numSteps; ++i) {
-    double* position{ phaseCloud.rawPosition() };
-    double* velocity{ phaseCloud.rawVelocity() };
+    // @todo Check this algorithm...
+    for (auto [position, velocity] : phaseCloud.enumeratePhasePoints()) {
 
+    }
     for (int j{ 0 }; j < phaseCloud.numberOfPoints; ++j, ++position, ++velocity) {
       double force{ forceAt(*position) };
 
@@ -72,8 +116,6 @@ void runSimulation() {
       std::cout << "Time " << (i * timeStep) << ". Entropy: " << currentEntropy << "\r";
     }
   }
-
-  std::cout << "\nFinal entropy: " << entropyCalculator.calculateEntropy(phaseCloud, bumps) << "\n";
 }
 
 double forceAt(double position) {
@@ -106,17 +148,17 @@ double forceAt(double position) {
   return -height * std::exp(expArg) * (2 * relativePosition * inverseWidth * inverseWidth) * expArg * expArg;
 }
 
-PhaseCloud createPhaseCloud(int numPoints, double centerVelocity, double centerPosition, double velocitySpread, double positionSpread) {
+PhaseCloud createPhaseCloud(int numPoints, double velocitySpread, double positionSpread, int numParticles, int spatialDimension) {
   std::random_device randomDevice;
   std::mt19937_64 generator(randomDevice());
   std::uniform_real_distribution<double> uniformDist(-1, 1);
 
-  PhaseCloud phaseCloud(numPoints, 1, 1);
+  PhaseCloud phaseCloud(numPoints, numParticles, spatialDimension);
   double* position{ phaseCloud.rawPosition() };
   double* velocity{ phaseCloud.rawVelocity() };
-  for (int i{ 0 }; i < numPoints; ++i, ++position, ++velocity) {
-    *position = centerPosition + positionSpread * uniformDist(generator);
-    *velocity = centerVelocity + velocitySpread * uniformDist(generator);
+  for (int i{ 0 }; i < phaseCloud.numCoordinates; ++i, ++position, ++velocity) {
+    *position = positionSpread * uniformDist(generator);
+    *velocity = velocitySpread * uniformDist(generator);
   }
 
   return phaseCloud;

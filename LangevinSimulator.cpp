@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -8,44 +9,43 @@
 #include "EntropyCalculator.h"
 #include "PhaseCloud.h"
 
-#include "Bumps.h"
-
 void runSimulation();
 double forceAt(double position);
 PhaseCloud createPhaseCloud(int numPoints, double velocitySpread, double positionSpread);
 
 class BumpGenerator {
 
-  const double segmentSpacing;
-  const double bumpExtent;
-  const double bumpFuzz;
-  const int numParticles;
-  const int spatialDimension;
+private:
+  const double segmentHalfSpacing;
+  const double bumpMaxWidth;
+  double bumpPositionVariation;
+  double bumpWidthVariationMultiplier;
+  const double bumpHeight;
 
   std::mt19937_64 generator;
   std::uniform_real_distribution<double> uniformDist;
 
-  std::vector<double> baseline;
-
-  BumpGenerator(double segmentSpacing, double bumpExtent, double bumpFuzz, int numParticles, int spatialDimension)
-    : segmentSpacing{ segmentSpacing },
-    bumpExtent{ bumpExtent },
-    bumpFuzz{ bumpFuzz },
-    numParticles{ numParticles },
-    spatialDimension{ spatialDimension },
-    baseline(numParticles * spatialDimension, -bumpExtent),
+public:
+  BumpGenerator(double segmentSpacing, double bumpMaxWidth, double bumpFuzz, double bumpHeight)
+    : segmentHalfSpacing{ std::max(0.0, segmentSpacing * 0.5) },
+    bumpMaxWidth{ std::min(bumpMaxWidth, segmentSpacing) },
+    bumpHeight{ std::max(0.0, bumpHeight) },
     generator((std::random_device())()),
-    uniformDist(-1, -1)
-   {}
+    uniformDist(-1, 1)
+  {
+    bumpFuzz = std::max(0.0, std::min(bumpFuzz, 1.0));
+    bumpPositionVariation = segmentHalfSpacing * bumpFuzz;
+    bumpWidthVariationMultiplier = bumpFuzz;
+  }
 
-  bool operator()(double& width, double& height, CoordinateSpan<double> position) {
-    
-    int currentBaselineCoord{ 0 };
-    double newBaselineCoordValue{};
-    // @todo This is wrong -- what to do with last value?
-    while (currentBaselineCoord < baseline.size() && (newBaselineCoordValue = baseline[currentBaselineCoord] + segmentSpacing) > bumpExtent) {
-      baseline[currentBaselineCoord] = 0;
-      ++currentBaselineCoord;
+  void operator()(double& width, double& height, CoordinateSpan<double> position) {
+    width = bumpMaxWidth * bumpWidthVariationMultiplier * uniformDist(generator);
+    height = bumpHeight;
+
+    int totalDimension{ position.totalSize() };
+    double* positionData{ position.raw() };
+    for (int i =0; i < totalDimension; ++i) {
+      positionData[i] = bumpPositionVariation * uniformDist(generator);
     }
   }
 
@@ -63,7 +63,7 @@ void runSimulation() {
   constexpr int numSteps{ 50000 };
   constexpr int numPoints{ 10000 };
   constexpr int spatialDimension{ 2 };
-  constexpr int numParticles{ 2 };
+  constexpr int numParticles{ 1 };
   
   constexpr double dampingCoefficient{ 0.03 };
   constexpr double beta{ 2E5 };
@@ -77,8 +77,11 @@ void runSimulation() {
   auto phaseCloud{ createPhaseCloud(numPoints, velocitySpread, positionSpread) };
 
   constexpr double segmentSpacing{ 0.1 };
-  constexpr double bumpExtent{ 10 };
-  auto bumps{ BumpDistribution::generate(numParticles, spatialDimension, segmentSpacing, BumpGenerator(segmentSpacing, bumpExtent, numParticles, spatialDimension)) };
+  constexpr int numSegmentsInOneDimension{ 100 };
+  constexpr double bumpMaxWidth{ 0.05 };
+  constexpr double bumpFuzz{ 0.3 };
+  constexpr double bumpHeight{ 1 };
+  auto bumps{ BumpDistribution::generate(numParticles, spatialDimension, segmentSpacing, numSegmentsInOneDimension, BumpGenerator(segmentSpacing, bumpMaxWidth, bumpFuzz, bumpHeight)) };
 
   EntropyCalculator entropyCalculator{};
   const double initialEntropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps) };

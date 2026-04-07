@@ -21,6 +21,9 @@
     <ClCompile Include="PhaseCloud.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="BumpDistribution.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="PhaseCloud.h">
@@ -29,19 +32,10 @@
     <ClInclude Include="BumpDistribution.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Bump.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Bumps.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="EntropyCalculator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ext\rapidcsv\src\rapidcsv.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="TensorView.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="CoordinateSpan.h">

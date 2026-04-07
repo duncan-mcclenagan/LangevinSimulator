@@ -136,17 +136,15 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="BumpDistribution.cpp" />
     <ClCompile Include="LangevinSimulator.cpp" />
     <ClCompile Include="PhaseCloud.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Bump.h" />
     <ClInclude Include="BumpDistribution.h" />
-    <ClInclude Include="Bumps.h" />
     <ClInclude Include="EntropyCalculator.h" />
     <ClInclude Include="ext\rapidcsv\src\rapidcsv.h" />
     <ClInclude Include="PhaseCloud.h" />
-    <ClInclude Include="TensorView.h" />
     <ClInclude Include="CoordinateSpan.h" />
   </ItemGroup>
   <ItemGroup>

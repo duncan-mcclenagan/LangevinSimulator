@@ -13,12 +13,12 @@ private:
 public:
    template<size_t Extent>
    constexpr CoordinateSpan(std::span<T, Extent> data, int spatialDimension)
-     : spatialDimension(ensurePositive(spatialDimension)), numParticles{ data.size() / this.spatialDimension }, data(data) {}
+     : spatialDimension(ensurePositive(spatialDimension)), numParticles{ data.size() / this->spatialDimension }, data(data) {}
 
    constexpr CoordinateSpan(T* data, int numParticles, int spatialDimension)
      : numParticles(ensurePositive(numParticles)),
      spatialDimension(ensurePositive(spatialDimension)),
-     data(data, this.numParticles * this.spatialDimension) {}
+     data(data, this->numParticles * this->spatialDimension) {}
 
 private:
   static int ensurePositive(int value) {
@@ -29,6 +29,10 @@ public:
 
     constexpr CoordinateSpan<const T> asConst() const noexcept {
       return CoordinateSpan<const T>(data, spatialDimension);
+    }
+
+    constexpr T* raw() noexcept {
+      return data.data();
     }
 
    constexpr T& operator[](int particleIndex, int spatialCoordinateIndex) noexcept const {
@@ -52,7 +56,7 @@ public:
        return false;
      }
      for (int i{ 0 }; i < a.size(); ++i) {
-       for (int j{ 0 }; j < N; ++j) {
+       for (int j{ 0 }; j < a.spatialDimension(); ++j) {
          if (a[i, j] != b[i, j]) {
            return false;
          }
@@ -72,11 +76,11 @@ namespace std {
       std::hash<T> hasher;
       for (int i{ 0 }; i < span.size(); ++i) {
         // TODO: Make this loop more "constexpr" using templates.
-        for (int j{ 0 }; j < N; ++j) {
+        for (int j{ 0 }; j < span.spatialDimension(); ++j) {
           hash ^= hasher(span[i, j]) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         }
       }
-      return seed;
+      return hash;
     }
   };
 }

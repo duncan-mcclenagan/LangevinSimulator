@@ -137,6 +137,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="BumpDistribution.cpp" />
+    <ClCompile Include="EntropyCalculator.cpp" />
     <ClCompile Include="LangevinSimulator.cpp" />
     <ClCompile Include="PhaseCloud.cpp" />
   </ItemGroup>

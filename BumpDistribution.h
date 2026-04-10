@@ -1,17 +1,11 @@
 #pragma once
 
-#include <array>
-#include <algorithm>
-#include <cmath>
-#include <mdspan>
-#include <optional>
-#include <stdexcept>
 #include <generator>
 #include <string>
-#include <unordered_set>
+#include <random>
+#include <unordered_map>
+#include <vector>
 #include "CoordinateSpan.h"
-#include "Bump.h"
-#include "ext/rapidcsv/src/rapidcsv.h"
 
 class BumpDistribution {
 private:
@@ -93,6 +87,7 @@ public:
   void toFile(const char* filename) const;
 
   template<typename F>
+    // Of form (double &width, double &height, CoordinateSpan<double> position)
     requires std::invocable<F, double&, double&, CoordinateSpan<double>>
   static BumpDistribution generate(int numParticles, int spatialDimension, double segmentSpacing, int numSegmentsInOneDimension, double bumpProbability, F bumpGenerator) {
     // @todo Argument error handling.
@@ -107,11 +102,45 @@ public:
     std::mt19937_64 randomGenerator((std::random_device())());
     std::bernoulli_distribution bumpDecider(bumpProbability);
 
-    // @todo Keep track of "current base position" and run through the entire grid, updating the rightmost base position
-    // value that does not push us beyond the range (otherwise reset it).
+    std::vector<int> indices(totalPhaseSpaceDimension);
+    int currentBumpStartIndex{ 0 };
+    while (indices[0] < numSegmentsInOneDimension) {
+      if (bumpDecider(randomGenerator)) {
+        positions.reserve(positions.size() + totalPhaseSpaceDimension);
+        for (int i{ 0 }; i < totalPhaseSpaceDimension; ++i) {
+          positions.push_back(indices[i] * segmentSpacing);
+        }
+
+        double bumpWidth{};
+        double bumpHeight{};
+        CoordinateSpan<double> bumpPosition(positions.data() + currentBumpStartIndex, numParticles, spatialDimension);
+        bumpGenerator(bumpWidth, bumpHeight, bumpPosition);
+
+        bumpsByPosition.insert({ bumpPosition.raw(), BumpData(bumpWidth, bumpHeight) });
+      }
+
+      // Advance right-most position unless it takes us beyond the range, in which case reset it and advance the next right-most position, etc.
+      for (int i{ totalPhaseSpaceDimension - 1 }; i >= 0; --i) {
+        if (++indices[i] < numSegmentsInOneDimension) break;
+        else indices[i] = 0;
+      }
+      currentBumpStartIndex += totalPhaseSpaceDimension;
+    }
+
+    return BumpDistribution(std::move(positions),
+      std::move(bumpsByPosition),
+      inverseSegmentSpacing,
+      static_cast<int>(bumpsByPosition.size()),
+      numParticles,
+      spatialDimension
+    );
   }
 
   static BumpDistribution fromFile(const char* filename, double segmentSpacing);
+
+  int toDiscrete(double value) const {
+    return toDiscrete(value, inverseSegmentSpacing);
+  }
 
 private:
   void computeDiscreteCoordinates(CoordinateSpan<const double> coordinates, CoordinateSpan<int> discreteCoordinates) const;

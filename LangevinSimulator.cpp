@@ -1,17 +1,13 @@
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <iostream>
 #include <random>
-#include <vector>
-#include "Bump.h"
 #include "BumpDistribution.h"
 #include "EntropyCalculator.h"
 #include "PhaseCloud.h"
 
 void runSimulation();
-double forceAt(double position);
-PhaseCloud createPhaseCloud(int numPoints, double velocitySpread, double positionSpread);
+PhaseCloud createPhaseCloud(int numPoints, double velocitySpread, double positionSpread, int numParticles, int spatialDimension);
 
 class BumpGenerator {
 
@@ -68,10 +64,6 @@ void runSimulation() {
   constexpr double dampingCoefficient{ 0.03 };
   constexpr double beta{ 2E5 };
 
-  constexpr double halfTimeStep{ timeStep * 0.5 };
-  const double firstVelocityDiffusionCoeff{ std::exp(-dampingCoefficient * halfTimeStep) };
-  const double secondVelocityDiffusionCoeff{ std::sqrt((1 - firstVelocityDiffusionCoeff * firstVelocityDiffusionCoeff) / (beta)) };
-
   constexpr double velocitySpread{ 0.5 };
   constexpr double positionSpread{ 1 };
   auto phaseCloud{ createPhaseCloud(numPoints, velocitySpread, positionSpread) };
@@ -81,74 +73,73 @@ void runSimulation() {
   constexpr double bumpMaxWidth{ 0.05 };
   constexpr double bumpFuzz{ 0.3 };
   constexpr double bumpHeight{ 1 };
-  auto bumps{ BumpDistribution::generate(numParticles, spatialDimension, segmentSpacing, numSegmentsInOneDimension, BumpGenerator(segmentSpacing, bumpMaxWidth, bumpFuzz, bumpHeight)) };
+  constexpr double bumpProbability{ 0.2 };
+  auto bumps{ BumpDistribution::generate(numParticles,
+    spatialDimension,
+    segmentSpacing,
+    numSegmentsInOneDimension,
+    bumpProbability,
+    BumpGenerator(segmentSpacing, bumpMaxWidth, bumpFuzz, bumpHeight)
+  ) };
 
   EntropyCalculator entropyCalculator{};
-  const double initialEntropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps) };
-  std::cout << "Initial entropy: " << initialEntropy << "\n";
+  const double initialXEntropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps, 0, 0) };
+  std::cout << "Initial entropy: " << initialXEntropy << "\n";
 
   std::random_device randomDevice;
   std::mt19937_64 generator(randomDevice());
   std::normal_distribution<double> normalDist(0, 1);
+  std::vector<double> forceBuffer(numParticles * spatialDimension);
+  CoordinateSpan<double> force(forceBuffer.data(), numParticles, spatialDimension);
+
+  constexpr double halfTimeStep{ timeStep * 0.5 };
+  const double firstVelocityDiffusionCoeff{ std::exp(-dampingCoefficient * halfTimeStep) };
+  const double secondVelocityDiffusionCoeff{ std::sqrt((1 - firstVelocityDiffusionCoeff * firstVelocityDiffusionCoeff) / (beta)) };
+
+  int totalPhaseSpaceDimension{ numParticles * spatialDimension };
   for (int i{ 0 }; i < numSteps; ++i) {
     // @todo Check this algorithm...
     for (auto [position, velocity] : phaseCloud.enumeratePhasePoints()) {
+      // First reversible force update.
+      bumps.computeForce(position.asConst(), force);
 
-    }
-    for (int j{ 0 }; j < phaseCloud.numberOfPoints; ++j, ++position, ++velocity) {
-      double force{ forceAt(*position) };
+      double* rawPositionStart{ position.raw() };
+      double* rawVelocityStart{ velocity.raw() };
+      double* rawForceStart{ force.raw() };
 
-      // First diffusive velocity diffusion update.
-      *velocity = firstVelocityDiffusionCoeff * *velocity + secondVelocityDiffusionCoeff * normalDist(generator);
-      // First reversible position update.
-      *position += halfTimeStep * *velocity;
-      // First reversible velocity update.
-      *velocity += halfTimeStep * force;
+      for (int j{ 0 }, double* rawPosition{ rawPositionStart }, double* rawVelocity{ rawVelocityStart }, double* rawForce{ rawForceStart };
+        j < totalPhaseSpaceDimension;
+        ++j, ++rawPosition, ++rawVelocity
+      ) {
+        // First diffusive velocity diffusion update.
+        *rawVelocity = firstVelocityDiffusionCoeff * *rawVelocity + secondVelocityDiffusionCoeff * normalDist(generator);
+        // First reversible position update.
+        *rawPosition += halfTimeStep * *rawVelocity;
+        // First reversible velocity update.
+        *rawVelocity += halfTimeStep * *rawForce;
+      }
+
       // Reversible force update. TODO: Should this be here?
-      force = forceAt(*position);
-      // Second reversible position update.
-      *position += halfTimeStep * *velocity;
-      // Second reversible velocity update.
-      *velocity += halfTimeStep * force;
-      // Second diffusive velocity update.
-      *velocity = firstVelocityDiffusionCoeff * *velocity + secondVelocityDiffusionCoeff * normalDist(generator);
+      bumps.computeForce(position.asConst(), force);
+
+      for (int j{ 0 }, double* rawPosition{ rawPositionStart }, double* rawVelocity{ rawVelocityStart }, double* rawForce{ rawForceStart };
+        j < totalPhaseSpaceDimension;
+        ++j, ++rawPosition, ++rawVelocity
+      ) {
+        // Second reversible position update.
+        *rawPosition += halfTimeStep * *rawVelocity;
+        // Second reversible velocity update.
+        *rawVelocity += halfTimeStep * *rawForce;
+        // Second diffusive velocity update.
+        *rawVelocity = firstVelocityDiffusionCoeff * *rawVelocity + secondVelocityDiffusionCoeff * normalDist(generator);
+      }
     }
 
     if (i % 100 == 0) {
-      double currentEntropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps) };
-      std::cout << "Time " << (i * timeStep) << ". Entropy: " << currentEntropy << "\r";
+      double currentXEntropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps, 0, 0) };
+      std::cout << "Time " << (i * timeStep) << ". Entropy: " << currentXEntropy << "\r";
     }
   }
-}
-
-double forceAt(double position) {
-  // Use the bump function V(x) = -H*e^(1/(((x - a)/w)^2 - 1)) to produce our minimum.
-  // H is the height of the bump, w is the width, and a is the center.
-  // The corresponding force is -H*e^(1/(((x - a)/w)^2 - 1))*(2*(x - a)/w^2)/(((x - a)/w)^2 - 1)^2.
-  // We divide a region up into segments and place a bump in each segment with some (randomzied but preset)
-  // center offset and width (we keep the height constant for now).
-
-  constexpr double height{ 0.2 };
-  constexpr double segmentSpacing{ 0.1 };
-  constexpr double inverseSegmentSpacing{ 1 / segmentSpacing };
-  constexpr int numSegments{ 201 };
-  constexpr int centerSegmentIndex{ numSegments / 2 };
-
-  const auto bump{ bumps.getNearestBump(position) };
-  const double relativePosition{ position - bump.center };
-
-  // See if we are within the bump.
-  if (std::abs(relativePosition) > bump.width) {
-    return 0;
-  }
-
-  // Calculate the force using the formula above.
-  // -H*e^(1/(((x - a)/w)^2 - 1))*(2*(x - a)/w^2)/(((x - a)/w)^2 - 1)^2
-  const double inverseWidth{ 1 / bump.width };
-  const double normalizedPosition{ relativePosition * inverseWidth };
-  const double expArg{ 1 / (normalizedPosition * normalizedPosition - 1) };
-
-  return -height * std::exp(expArg) * (2 * relativePosition * inverseWidth * inverseWidth) * expArg * expArg;
 }
 
 PhaseCloud createPhaseCloud(int numPoints, double velocitySpread, double positionSpread, int numParticles, int spatialDimension) {

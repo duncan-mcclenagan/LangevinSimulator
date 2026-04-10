@@ -1,4 +1,7 @@
 #include <assert.h>
+#include <optional>
+#include <stdexcept>
+#include "ext/rapidcsv/src/rapidcsv.h"
 #include "BumpDistribution.h"
 
 void BumpDistribution::computeForce(CoordinateSpan<const double> particlePositions, CoordinateSpan<double> forceOutput) const {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <assert.h>
 #include <cstddef>
 #include <span>
 
@@ -49,6 +50,53 @@ public:
 
    constexpr int spatialDimension() const noexcept {
      return spatialDimension;
+   }
+
+   constexpr CoordinateSpan<T>& operator+=(const CoordinateSpan<T>& rhs) {
+     assert(rhs.numParticles == numParticles);
+     assert(rhs.spatialDimension == spatialDimension);
+     
+     int totalSize{ totalSize() };
+     T *data = this->data.data();
+     const T* rhsData = rhs.data.data();
+     for (int i{ 0 }; i < totalSize; ++i) {
+       data[i] += rhsData[i];
+     }
+
+     return *this;
+   }
+
+   constexpr CoordinateSpan<T>& operator-=(const CoordinateSpan<T>& rhs) {
+     assert(rhs.numParticles == numParticles);
+     assert(rhs.spatialDimension == spatialDimension);
+
+     int totalSize{ totalSize() };
+     T *data = this->data.data();
+     const T* rhsData = rhs.data.data();
+     for (int i{ 0 }; i < totalSize; ++i) {
+       data[i] -= rhsData[i];
+     }
+
+     return *this;
+   }
+
+   constexpr CoordinateSpan<T>& operator*=(double rhs) {
+     int totalSize{ totalSize() };
+     T *data = this->data.data();
+     for (int i{ 0 }; i < totalSize; ++i) {
+       data[i] *= rhs;
+     }
+
+     return *this;
+   }
+
+   constexpr CoordinateSpan<T>& operator-() {
+      int totalSize{ totalSize() };
+     T *data = this->data.data();
+     for (int i{ 0 }; i < totalSize; ++i) {
+       data[i] = -data[i];
+     }
+     return *this;
    }
 
    static bool operator==(const CoordinateSpan<T>& a, const CoordinateSpan<T>& b) {

@@ -65,7 +65,7 @@ std::generator<bool> BumpDistribution::enumerateDiscreteCoordinates(CoordinateSp
 }
 
 void BumpDistribution::computeDiscreteCoordinates(CoordinateSpan<const double> coordinates, CoordinateSpan<int> discreteCoordinates) const {
-  const int totalSize{ coordinates.totalSize() };
+  const int totalSize{ static_cast<int>(coordinates.totalSize()) };
   assert(totalSize == discreteCoordinates.totalSize());
 
   const double* coordinatesData{ coordinates.raw() };
@@ -148,7 +148,7 @@ BumpDistribution BumpDistribution::fromFile(const char* filename, double segment
   int numParticles{ currentParticleIndex };
   assert(spatialDimension.has_value());
 
-  int numBumps{ csv.GetRowCount() };
+  int numBumps{ static_cast<int>(csv.GetRowCount()) };
   // @todo Something cleaner here??
   // @todo Proper trapping with invalid conversions during GetCell().
   std::vector<double> positions{};
@@ -159,7 +159,7 @@ BumpDistribution BumpDistribution::fromFile(const char* filename, double segment
   positions.reserve(totalPhaseSpaceDimension * numBumps);
   for (int i{ 0 }; i < numBumps; ++i) {
     double width{ csv.GetCell<double>(widthIndex, i) };
-    double height{ csv.GetCell<double>(height, i)};
+    double height{ csv.GetCell<double>(heightIndex, i)};
 
     double* positionStart{ &positions[positions.size()] };
     for (int j{ 0 }, n{ 0 }; j < numParticles; ++j) {

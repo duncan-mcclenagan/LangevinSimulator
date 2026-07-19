@@ -14,7 +14,7 @@ private:
 public:
    template<size_t Extent>
    constexpr CoordinateSpan(std::span<T, Extent> data, int spatialDimension)
-     : spatialDimension(ensurePositive(spatialDimension)), numParticles{ data.size() / this->spatialDimension }, data(data) {}
+     : spatialDimension(ensurePositive(spatialDimension)), numParticles{ static_cast<int>(data.size() / this->spatialDimension) }, data(data) {}
 
    constexpr CoordinateSpan(T* data, int numParticles, int spatialDimension)
      : numParticles(ensurePositive(numParticles)),
@@ -28,91 +28,83 @@ private:
 
 public:
 
-    constexpr CoordinateSpan<const T> asConst() const noexcept {
-      return CoordinateSpan<const T>(data, spatialDimension);
-    }
+  constexpr CoordinateSpan<const T> asConst() const noexcept {
+    return CoordinateSpan<const T>(static_cast<std::span<const T, std::dynamic_extent>>(data), spatialDimension);
+  }
 
-    constexpr T* raw() noexcept {
-      return data.data();
-    }
+  constexpr T* raw() noexcept {
+    return data.data();
+  }
 
-   constexpr T& operator[](int particleIndex, int spatialCoordinateIndex) noexcept const {
-     return data[particleIndex * spatialDimension + spatialCoordinateIndex];
-   }
+  constexpr T& operator[](int particleIndex, int spatialCoordinateIndex) const noexcept {
+    return data[particleIndex * spatialDimension + spatialCoordinateIndex];
+  }
 
-   constexpr size_t totalSize() const noexcept {
-     return data.size();
-   }
+  constexpr size_t totalSize() const noexcept {
+    return data.size();
+  }
 
-   constexpr int numParticles() const noexcept {
-     return numParticles;
-   }
-
-   constexpr int spatialDimension() const noexcept {
-     return spatialDimension;
-   }
-
-   constexpr CoordinateSpan<T>& operator+=(const CoordinateSpan<T>& rhs) {
-     assert(rhs.numParticles == numParticles);
-     assert(rhs.spatialDimension == spatialDimension);
+  constexpr CoordinateSpan<T>& operator+=(const CoordinateSpan<T>& rhs) {
+    assert(rhs.numParticles == numParticles);
+    assert(rhs.spatialDimension == spatialDimension);
      
-     int totalSize{ totalSize() };
-     T *data = this->data.data();
-     const T* rhsData = rhs.data.data();
-     for (int i{ 0 }; i < totalSize; ++i) {
-       data[i] += rhsData[i];
-     }
+    int totalSize{ totalSize() };
+    T *data = this->data.data();
+    const T* rhsData = rhs.data.data();
+    for (int i{ 0 }; i < totalSize; ++i) {
+      data[i] += rhsData[i];
+    }
 
-     return *this;
-   }
+    return *this;
+  }
 
-   constexpr CoordinateSpan<T>& operator-=(const CoordinateSpan<T>& rhs) {
-     assert(rhs.numParticles == numParticles);
-     assert(rhs.spatialDimension == spatialDimension);
+  constexpr CoordinateSpan<T>& operator-=(const CoordinateSpan<T>& rhs) {
+    assert(rhs.numParticles == numParticles);
+    assert(rhs.spatialDimension == spatialDimension);
 
-     int totalSize{ totalSize() };
-     T *data = this->data.data();
-     const T* rhsData = rhs.data.data();
-     for (int i{ 0 }; i < totalSize; ++i) {
-       data[i] -= rhsData[i];
-     }
+    int totalSize{ totalSize() };
+    T *data = this->data.data();
+    const T* rhsData = rhs.data.data();
+    for (int i{ 0 }; i < totalSize; ++i) {
+      data[i] -= rhsData[i];
+    }
 
-     return *this;
-   }
+    return *this;
+  }
 
-   constexpr CoordinateSpan<T>& operator*=(double rhs) {
-     int totalSize{ totalSize() };
-     T *data = this->data.data();
-     for (int i{ 0 }; i < totalSize; ++i) {
-       data[i] *= rhs;
-     }
+  constexpr CoordinateSpan<T>& operator*=(double rhs) {
+    int totalSize{ totalSize() };
+    T *data = this->data.data();
+    for (int i{ 0 }; i < totalSize; ++i) {
+      data[i] *= rhs;
+    }
 
-     return *this;
-   }
+    return *this;
+  }
 
-   constexpr CoordinateSpan<T>& operator-() {
-      int totalSize{ totalSize() };
-     T *data = this->data.data();
-     for (int i{ 0 }; i < totalSize; ++i) {
-       data[i] = -data[i];
-     }
-     return *this;
-   }
+  constexpr CoordinateSpan<T>& operator-() {
+    int totalSize{ totalSize() };
+    T *data = this->data.data();
+    for (int i{ 0 }; i < totalSize; ++i) {
+      data[i] = -data[i];
+    }
+    return *this;
+  }
 
-   static bool operator==(const CoordinateSpan<T>& a, const CoordinateSpan<T>& b) {
-     if (a.size() != b.size()) {
-       return false;
-     }
-     for (int i{ 0 }; i < a.size(); ++i) {
-       for (int j{ 0 }; j < a.spatialDimension(); ++j) {
-         if (a[i, j] != b[i, j]) {
-           return false;
-         }
-       }
-     }
+  friend bool operator==(const CoordinateSpan<T>& a, const CoordinateSpan<T>& b) {
+    if (a.size() != b.size()) {
+      return false;
+    }
+    for (int i{ 0 }; i < a.size(); ++i) {
+      for (int j{ 0 }; j < a.spatialDimension(); ++j) {
+        if (a[i, j] != b[i, j]) {
+          return false;
+        }
+      }
+    }
 
-     return true;
-   }
+    return true;
+  }
 
 };
 

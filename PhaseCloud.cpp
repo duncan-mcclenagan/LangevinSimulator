@@ -2,7 +2,7 @@
 #include "PhaseCloud.h"
 
 PhaseCloud::PhaseCloud(int numberOfPoints, int spatialDimension, int numberOfParticles)
-  : numberOfPoints(numberOfPoints), numberOfParticles(numberOfParticles), spatialDimension(spatialDimension), halfSize(numberOfPoints * spatialDimension * numberOfParticles)
+  : numberOfPoints(numberOfPoints), numberOfParticles(numberOfParticles), spatialDimension(spatialDimension), numCoordinates(numberOfPoints * spatialDimension * numberOfParticles), pointSize(spatialDimension * numberOfParticles)
 {
   if (numberOfPoints <= 0) {
     throw std::invalid_argument("numberOfPoints must be positive");

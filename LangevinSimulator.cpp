@@ -38,7 +38,7 @@ public:
     width = bumpMaxWidth * bumpWidthVariationMultiplier * uniformDist(generator);
     height = bumpHeight;
 
-    int totalDimension{ position.totalSize() };
+    int totalDimension{ static_cast<int>(position.totalSize()) };
     double* positionData{ position.raw() };
     for (int i =0; i < totalDimension; ++i) {
       positionData[i] = bumpPositionVariation * uniformDist(generator);
@@ -66,7 +66,7 @@ void runSimulation() {
 
   constexpr double velocitySpread{ 0.5 };
   constexpr double positionSpread{ 1 };
-  auto phaseCloud{ createPhaseCloud(numPoints, velocitySpread, positionSpread) };
+  auto phaseCloud{ createPhaseCloud(numPoints, velocitySpread, positionSpread, numParticles, spatialDimension) };
 
   constexpr double segmentSpacing{ 0.1 };
   constexpr int numSegmentsInOneDimension{ 100 };
@@ -103,14 +103,14 @@ void runSimulation() {
       // First reversible force update.
       bumps.computeForce(position.asConst(), force);
 
-      double* rawPositionStart{ position.raw() };
-      double* rawVelocityStart{ velocity.raw() };
-      double* rawForceStart{ force.raw() };
+      double* const rawPositionStart{ position.raw() };
+      double* const rawVelocityStart{ velocity.raw() };
+      double* const rawForceStart{ force.raw() };
 
-      for (int j{ 0 }, double* rawPosition{ rawPositionStart }, double* rawVelocity{ rawVelocityStart }, double* rawForce{ rawForceStart };
-        j < totalPhaseSpaceDimension;
-        ++j, ++rawPosition, ++rawVelocity
-      ) {
+      double* rawPosition{ rawPositionStart };
+      double* rawVelocity{ rawVelocityStart };
+      double* rawForce{ rawForceStart };
+      for (int j{ 0 }; j < totalPhaseSpaceDimension; ++j, ++rawPosition, ++rawVelocity, ++rawForce) {
         // First diffusive velocity diffusion update.
         *rawVelocity = firstVelocityDiffusionCoeff * *rawVelocity + secondVelocityDiffusionCoeff * normalDist(generator);
         // First reversible position update.
@@ -122,10 +122,10 @@ void runSimulation() {
       // Reversible force update. TODO: Should this be here?
       bumps.computeForce(position.asConst(), force);
 
-      for (int j{ 0 }, double* rawPosition{ rawPositionStart }, double* rawVelocity{ rawVelocityStart }, double* rawForce{ rawForceStart };
-        j < totalPhaseSpaceDimension;
-        ++j, ++rawPosition, ++rawVelocity
-      ) {
+      rawPosition = rawPositionStart;
+      rawVelocity = rawVelocityStart;
+      rawForce = rawForceStart;
+      for (int j{ 0 }; j < totalPhaseSpaceDimension; ++j, ++rawPosition, ++rawVelocity, ++rawForce) {
         // Second reversible position update.
         *rawPosition += halfTimeStep * *rawVelocity;
         // Second reversible velocity update.

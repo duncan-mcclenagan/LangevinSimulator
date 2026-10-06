@@ -9,10 +9,8 @@
 #include <algorithm>
 #include <cmath>
 #include <utility>
+#include <memory>
 #include "CoordinateSpan.h"
-
-// @todo-H The bumpsByPosition thing doesn't work as-is because it doesn't reference stable memory locations.
-// Instead, we should simply use bump indices and access the bump data from the positions vector.
 
 class BumpDistribution {
 private:
@@ -27,82 +25,88 @@ private:
   };
 
   class BumpDataEquality {
-
-    // Enable heterogenous lookup.
-    using is_transparent = void;
-
   private:
-    bool inSameSector(CoordinateSpan<const double> position, const BumpData& data, const BumpDistribution& distribution) const;
+    const std::shared_ptr<const std::vector<double>> positions;
+    const double inverseSegmentSpacing;
+    const int totalPhaseSpaceDimension;
+
+    bool inSameSector(CoordinateSpan<const double> position, const BumpData& data) const;
 
   public:
+    using is_transparent = void;
+
+    BumpDataEquality(std::shared_ptr<const std::vector<double>> positions, double inverseSegmentSpacing, int totalPhaseSpaceDimension)
+      : positions(std::move(positions)), inverseSegmentSpacing(inverseSegmentSpacing), totalPhaseSpaceDimension(totalPhaseSpaceDimension) {}
 
     bool operator()(const BumpData& first, const BumpData& second) const;
 
-    inline bool operator()(const BumpData& data, std::pair<CoordinateSpan<const double>, const BumpDistribution&> positionAndDistribution) const {
-      return inSameSector(positionAndDistribution.first, data, positionAndDistribution.second);
+    bool operator()(const BumpData& data, CoordinateSpan<const double> position) const {
+      return inSameSector(position, data);
     }
 
-    inline bool operator()(std::pair<CoordinateSpan<const double>, const BumpDistribution&> positionAndDistribution, const BumpData& data) const {
-      return inSameSector(positionAndDistribution.first, data, positionAndDistribution.second);
+    bool operator()(CoordinateSpan<const double> position, const BumpData& data) const {
+      return inSameSector(position, data);
     }
 
-    inline bool operator()(const BumpData& data, std::pair<CoordinateSpan<double>, const BumpDistribution&> positionAndDistribution) const {
-      return inSameSector(positionAndDistribution.first.asConst(), data, positionAndDistribution.second);
+    bool operator()(const BumpData& data, CoordinateSpan<double> position) const {
+      return inSameSector(position.asConst(), data);
     }
 
-    inline bool operator()(std::pair<CoordinateSpan<double>, const BumpDistribution&> positionAndDistribution, const BumpData& data) const {
-      return inSameSector(positionAndDistribution.first.asConst(), data, positionAndDistribution.second);
+    bool operator()(CoordinateSpan<double> position, const BumpData& data) const {
+      return inSameSector(position.asConst(), data);
     }
 
   };
 
-  class BumpDataHash {
-    using is_transparent = void;
-
+  class BumpDataHasher {
   private:
-    size_t getHashForPosition(CoordinateSpan<const double> position, double inverseSegmentSpacing, int totalPhaseSpaceDimension) const;
-    inline size_t getHashForPosition(CoordinateSpan<const double> position, const BumpDistribution& distribution) const {
-      return getHashForPosition(position, distribution.inverseSegmentSpacing, distribution.totalPhaseSpaceDimension);
-    }
+    const std::shared_ptr<const std::vector<double>> positions;
+    const double inverseSegmentSpacing;
+    const int totalPhaseSpaceDimension;
+
+    size_t getHashForPosition(CoordinateSpan<const double> position) const;
 
   public:
-    inline size_t operator()(const BumpData& data) const {
-      data.
+    using is_transparent = void;
+
+    BumpDataHasher(std::shared_ptr<const std::vector<double>> positions, double inverseSegmentSpacing, int totalPhaseSpaceDimension)
+      : positions(std::move(positions)), inverseSegmentSpacing(inverseSegmentSpacing), totalPhaseSpaceDimension(totalPhaseSpaceDimension) {}
+
+    size_t operator()(const BumpData& data) const;
+
+    size_t operator()(CoordinateSpan<const double> position) const {
+      return getHashForPosition(position);
     }
 
-    inline size_t operator()(std::pair<CoordinateSpan<const double>, const BumpDistribution&> positionAndDistribution) const {
-      return getHashForPosition(positionAndDistribution.first, positionAndDistribution.second);
-    }
-
-    size_t operator()(std::pair<CoordinateSpan<double>, const BumpDistribution&> positionAndDistribution) const {
-      return getHashForPosition(positionAndDistribution.first.asConst(), positionAndDistribution.second);
+    size_t operator()(CoordinateSpan<double> position) const {
+      return getHashForPosition(position.asConst());
     }
 
   };
+
+private:
+  const std::shared_ptr<const std::vector<double>> positions;
+  const double inverseSegmentSpacing;
+
+  typedef std::unordered_set<BumpData, BumpDataHasher, BumpDataEquality> BumpSet;
+  const BumpSet bumps;
 
 public:
   const int numBumps;
   const int numParticles;
   const int numSpatialCoords;
   const int totalPhaseSpaceDimension;
+
 private:
-  const std::vector<double> positions;
-
-  typedef std::unordered_set<BumpData, BumpDataHash, BumpDataEquality> BumpSet;
-  const BumpSet bumps;
-
-  const double inverseSegmentSpacing;
-
-  BumpDistribution(std::vector<double> positions,
+  BumpDistribution(std::shared_ptr<const std::vector<double>> positions,
     BumpSet bumps,
     double inverseSegmentSpacing,
-    int numBumps,
     int numParticles,
     int numSpatialCoords)
-    : positions(positions),
-      bumps(bumps),
+    : positions(std::move(positions)),
       inverseSegmentSpacing(inverseSegmentSpacing),
-      numBumps(numBumps),
+      bumps(std::move(bumps)),
+      numBumps(static_cast<int>(this->bumps.size())),
       numParticles(numParticles),
       numSpatialCoords(numSpatialCoords),
       totalPhaseSpaceDimension(numParticles * numSpatialCoords)
@@ -122,12 +126,14 @@ public:
   static BumpDistribution generate(int numParticles, int spatialDimension, double segmentSpacing, int numSegmentsInOneDimension, double bumpProbability, F bumpGenerator) {
     // @todo Argument error handling.
     const int totalPhaseSpaceDimension{ numParticles * spatialDimension };
-    const int estimatedNumBumps{ static_cast<int>(std::pow(numSegmentsInOneDimension * bumpProbability, totalPhaseSpaceDimension)) };
+    const int estimatedNumBumps{ static_cast<int>(std::pow(numSegmentsInOneDimension, totalPhaseSpaceDimension) * bumpProbability) };
     const double inverseSegmentSpacing{ 1 / segmentSpacing };
 
-    std::vector<double> positions{};
-    BumpSet bumps(estimatedNumBumps);
-    positions.reserve(static_cast<size_t>(estimatedNumBumps) * totalPhaseSpaceDimension);
+    auto positions{ std::make_shared<std::vector<double>>() };
+    BumpSet bumps(estimatedNumBumps,
+      BumpDataHasher(positions, inverseSegmentSpacing, totalPhaseSpaceDimension),
+      BumpDataEquality(positions, inverseSegmentSpacing, totalPhaseSpaceDimension));
+    positions->reserve(static_cast<size_t>(estimatedNumBumps) * totalPhaseSpaceDimension);
 
     std::mt19937_64 randomGenerator((std::random_device())());
     std::bernoulli_distribution bumpDecider(bumpProbability);
@@ -135,15 +141,15 @@ public:
     std::vector<int> indices(totalPhaseSpaceDimension);
     while (indices[0] < numSegmentsInOneDimension) {
       if (bumpDecider(randomGenerator)) {
-        positions.reserve(positions.size() + totalPhaseSpaceDimension);
+        positions->reserve(positions->size() + totalPhaseSpaceDimension);
         for (int i{ 0 }; i < totalPhaseSpaceDimension; ++i) {
-          positions.push_back(indices[i] * segmentSpacing);
+          positions->push_back(indices[i] * segmentSpacing);
         }
 
         double bumpWidth{};
         double bumpHeight{};
-        int bumpPositionStartIndex{ static_cast<int>(positions.size()) - totalPhaseSpaceDimension };
-        CoordinateSpan<double> bumpPosition(positions.data() + bumpPositionStartIndex, numParticles, spatialDimension);
+        int bumpPositionStartIndex{ static_cast<int>(positions->size()) - totalPhaseSpaceDimension };
+        CoordinateSpan<double> bumpPosition(positions->data() + bumpPositionStartIndex, numParticles, spatialDimension);
         bumpGenerator(bumpWidth, bumpHeight, bumpPosition);
 
         bumps.insert(BumpData(bumpWidth, bumpHeight, bumpPositionStartIndex));
@@ -156,10 +162,9 @@ public:
       }
     }
 
-    return BumpDistribution(std::move(positions),
-      bumps,
+    return BumpDistribution(positions,
+      std::move(bumps),
       inverseSegmentSpacing,
-      static_cast<int>(bumps),
       numParticles,
       spatialDimension
     );

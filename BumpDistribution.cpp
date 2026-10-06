@@ -6,17 +6,18 @@
 #include <vector>
 #include <utility>
 #include <type_traits>
+#include <functional>
 #include "ext/rapidcsv/src/rapidcsv.h"
 #include "CoordinateSpan.h"
 #include "BumpDistribution.h"
 
 void BumpDistribution::computeForce(CoordinateSpan<const double> particlePositions, CoordinateSpan<double> forceOutput) const {
-  assert(particlePositions.totalSize() == forceOutput.totalSize() == totalPhaseSpaceDimension);
+  assert(particlePositions.totalSize() == forceOutput.totalSize() && forceOutput.totalSize() == totalPhaseSpaceDimension);
 
   double* forceOutputData{ forceOutput.raw() };
   const double* particlePositionsData{ particlePositions.raw() };
 
-  auto bumpSearchResult{ bumps.find(std::make_pair(particlePositions, *this)) };
+  auto bumpSearchResult{ bumps.find(particlePositions) };
 
   if (bumpSearchResult == bumps.end()) {
     // Nothing was found => no force.
@@ -26,8 +27,8 @@ void BumpDistribution::computeForce(CoordinateSpan<const double> particlePositio
     return;
   }
 
-  const double* bumpPosition{ positions.data() + bumpSearchResult.startPositionIndex };
-  const auto bumpData{ bumpSearchResult->second };
+  const BumpData& bumpData{ *bumpSearchResult };
+  const double* bumpPosition{ positions->data() + bumpData.startPositionIndex };
 
   // Calculate the difference part of the force output first, and simultaneously
   // calculate the square distance. If we're outside the bump, return a zero force
@@ -64,8 +65,8 @@ void BumpDistribution::computeForce(CoordinateSpan<const double> particlePositio
 std::generator<bool> BumpDistribution::enumerateDiscreteCoordinates(CoordinateSpan<int> discreteCoordinates) const {
   assert(discreteCoordinates.totalSize() == totalPhaseSpaceDimension);
 
-  for (int i{ 0 }; i < numBumps; ++i) {
-    computeDiscreteCoordinates(CoordinateSpan<const double>(positions.data() + i * totalPhaseSpaceDimension, numParticles, numSpatialCoords), discreteCoordinates);
+  for (const BumpData& bump : bumps) {
+    computeDiscreteCoordinates(CoordinateSpan<const double>(positions->data() + bump.startPositionIndex, numParticles, numSpatialCoords), discreteCoordinates);
     co_yield true;
   }
 }
@@ -101,7 +102,7 @@ void BumpDistribution::toFile(const char* filename) const {
   for (const auto& bumpData : bumps) {
     csv.SetCell(widthIndex, i, std::sqrt(bumpData.squareWidth));
     csv.SetCell(heightIndex, i, bumpData.height);
-    CoordinateSpan<const double> position{ positions.data() + bumpData.startPositionIndex, numParticles, numSpatialCoords};
+    CoordinateSpan<const double> position{ positions->data() + bumpData.startPositionIndex, numParticles, numSpatialCoords};
     for (int j{ 0 }, n{ startPositionIndex }; j < numParticles; ++j) {
       for (int k{ 0 }; k < numSpatialCoords; ++k, ++n) {
         csv.SetCell(n, i, position[j, k]);
@@ -157,38 +158,45 @@ BumpDistribution BumpDistribution::fromFile(const char* filename, double segment
   int numBumps{ static_cast<int>(csv.GetRowCount()) };
   // @todo Something cleaner here??
   // @todo Proper trapping with invalid conversions during GetCell().
-  std::vector<double> positions{};
+  auto positions{ std::make_shared<std::vector<double>>() };
   const double inverseSegmentSpacing{ 1 / segmentSpacing };
   const int totalPhaseSpaceDimension{ spatialDimension.value() * numParticles };
-  BumpSet bumps(numBumps);
-  positions.reserve(static_cast<size_t>(totalPhaseSpaceDimension) * numBumps);
+  BumpSet bumps(numBumps,
+    BumpDataHasher(positions, inverseSegmentSpacing, totalPhaseSpaceDimension),
+    BumpDataEquality(positions, inverseSegmentSpacing, totalPhaseSpaceDimension));
+  positions->reserve(static_cast<size_t>(totalPhaseSpaceDimension) * numBumps);
   for (int i{ 0 }; i < numBumps; ++i) {
     double width{ csv.GetCell<double>(widthIndex, i) };
     double height{ csv.GetCell<double>(heightIndex, i)};
 
-    int startPositionIndex{ static_cast<int>(positions.size()) };
-    double* positionStart{ &positions[startPositionIndex] };
+    int startPositionIndex{ static_cast<int>(positions->size()) };
     for (int j{ 0 }, n{ 0 }; j < numParticles; ++j) {
       for (int k{ 0 }; k < spatialDimension; ++k, ++n) {
         double positionComponent{ csv.GetCell<double>(positionIndices[n], i) };
-        positions.push_back(positionComponent);
+        positions->push_back(positionComponent);
       }
     }
 
-    if (bumps.contains(std::make_pair(CoordinateSpan<const double>(positionStart, numParticles, spatialDimension.value()), *this))) {
+    double* positionStart{ positions->data() + startPositionIndex };
+    CoordinateSpan<const double> position(positionStart, numParticles, spatialDimension.value());
+    if (bumps.contains(position)) {
       throw std::runtime_error("Input CSV contains multiple bumps in one segment.");
     }
     bumps.insert(BumpData(width, height, startPositionIndex));
   }
 
-  return BumpDistribution(std::move(positions), std::move(bumps), inverseSegmentSpacing, numBumps, numParticles, spatialDimension.value());
+  return BumpDistribution(positions, std::move(bumps), inverseSegmentSpacing, numParticles, spatialDimension.value());
 }
 
-size_t getHashForPosition(CoordinateSpan<const double> position, const BumpDistribution& distribution) const;
+bool BumpDistribution::BumpDataEquality::inSameSector(CoordinateSpan<const double> position, const BumpData& data) const {
+  if (position.totalSize() != static_cast<size_t>(totalPhaseSpaceDimension)) {
+    return false;
+  }
 
-inline bool BumpDistribution::BumpDataEquality::operator()(const double* firstPosition, const double* secondPosition) const {
+  const double* const storedPosition{ positions->data() + data.startPositionIndex };
+  const double* const queryPosition{ position.raw() };
   for (int i{ 0 }; i < totalPhaseSpaceDimension; ++i) {
-    if (BumpDistribution::toDiscrete(firstPosition[i], inverseSegmentSpacing) != BumpDistribution::toDiscrete(secondPosition[i], inverseSegmentSpacing)) {
+    if (BumpDistribution::toDiscrete(storedPosition[i], inverseSegmentSpacing) != BumpDistribution::toDiscrete(queryPosition[i], inverseSegmentSpacing)) {
       return false;
     }
   }
@@ -196,10 +204,27 @@ inline bool BumpDistribution::BumpDataEquality::operator()(const double* firstPo
   return true;
 }
 
-inline size_t BumpDistribution::BumpDataHash::operator()(const double* position) const {
+bool BumpDistribution::BumpDataEquality::operator()(const BumpData& first, const BumpData& second) const {
+  const double* const firstPosition{ positions->data() + first.startPositionIndex };
+  CoordinateSpan<const double> position(firstPosition, 1, totalPhaseSpaceDimension);
+  return inSameSector(position, second);
+}
+
+size_t BumpDistribution::BumpDataHasher::getHashForPosition(CoordinateSpan<const double> position) const {
+  if (position.totalSize() != static_cast<size_t>(totalPhaseSpaceDimension)) {
+    return 0;
+  }
+
   size_t hash{ 0 };
+  const double* const positionData{ position.raw() };
   for (int i{ 0 }; i < totalPhaseSpaceDimension; ++i) {
-    hash ^= std::hash<int>{}(BumpDistribution::toDiscrete(position[i], inverseSegmentSpacing)) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    hash ^= std::hash<int>{}(BumpDistribution::toDiscrete(positionData[i], inverseSegmentSpacing)) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
   }
   return hash;
+}
+
+size_t BumpDistribution::BumpDataHasher::operator()(const BumpData& data) const {
+  const double* const positionData{ positions->data() + data.startPositionIndex };
+  CoordinateSpan<const double> position(positionData, 1, totalPhaseSpaceDimension);
+  return getHashForPosition(position);
 }

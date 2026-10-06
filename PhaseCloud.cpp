@@ -1,7 +1,7 @@
 #include <stdexcept>
 #include "PhaseCloud.h"
 
-PhaseCloud::PhaseCloud(int numberOfPoints, int spatialDimension, int numberOfParticles)
+PhaseCloud::PhaseCloud(int numberOfPoints, int numberOfParticles, int spatialDimension)
   : numberOfPoints(numberOfPoints), numberOfParticles(numberOfParticles), spatialDimension(spatialDimension), numCoordinates(numberOfPoints * spatialDimension * numberOfParticles), pointSize(spatialDimension * numberOfParticles)
 {
   if (numberOfPoints <= 0) {

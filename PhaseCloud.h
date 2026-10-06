@@ -10,11 +10,11 @@ private:
   std::vector<double> data;
 
   inline int getPositionIndex(int pointIndex, int particleIndex, int spatialCoordinateIndex) const noexcept {
-    return pointIndex * (numberOfParticles * numberOfPoints) + particleIndex * numberOfPoints + spatialCoordinateIndex;
+    return pointIndex * pointSize + particleIndex * spatialDimension + spatialCoordinateIndex;
   }
 
   inline int getVelocityIndex(int pointIndex, int particleIndex, int spatialCoordinateIndex) const noexcept {
-    return numCoordinates + (pointIndex * (numberOfParticles * numberOfPoints) + particleIndex * numberOfPoints + spatialCoordinateIndex);
+    return numCoordinates + pointIndex * pointSize + particleIndex * spatialDimension + spatialCoordinateIndex;
   }
 
 public:

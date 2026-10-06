@@ -1,8 +1,8 @@
 #pragma once
 
-#include <assert.h>
-#include <cstddef>
+#include <cassert>
 #include <span>
+#include <type_traits>
 
 template<typename T>
 class CoordinateSpan {
@@ -37,18 +37,18 @@ public:
   }
 
   constexpr T& operator[](int particleIndex, int spatialCoordinateIndex) const noexcept {
-    return data[particleIndex * spatialDimension + spatialCoordinateIndex];
+    return data[static_cast<size_t>(particleIndex) * spatialDimension + spatialCoordinateIndex];
   }
 
   constexpr size_t totalSize() const noexcept {
     return data.size();
   }
 
-  constexpr CoordinateSpan<T>& operator+=(const CoordinateSpan<T>& rhs) {
+  CoordinateSpan<T>& operator+=(const CoordinateSpan<T>& rhs) {
     assert(rhs.numParticles == numParticles);
     assert(rhs.spatialDimension == spatialDimension);
      
-    int totalSize{ totalSize() };
+    int totalSize{ this->totalSize() };
     T *data = this->data.data();
     const T* rhsData = rhs.data.data();
     for (int i{ 0 }; i < totalSize; ++i) {
@@ -58,11 +58,11 @@ public:
     return *this;
   }
 
-  constexpr CoordinateSpan<T>& operator-=(const CoordinateSpan<T>& rhs) {
+  CoordinateSpan<T>& operator-=(const CoordinateSpan<T>& rhs) {
     assert(rhs.numParticles == numParticles);
     assert(rhs.spatialDimension == spatialDimension);
 
-    int totalSize{ totalSize() };
+    int totalSize{ this->totalSize() };
     T *data = this->data.data();
     const T* rhsData = rhs.data.data();
     for (int i{ 0 }; i < totalSize; ++i) {
@@ -72,8 +72,8 @@ public:
     return *this;
   }
 
-  constexpr CoordinateSpan<T>& operator*=(double rhs) {
-    int totalSize{ totalSize() };
+  CoordinateSpan<T>& operator*=(double rhs) {
+    int totalSize{ this->totalSize() };
     T *data = this->data.data();
     for (int i{ 0 }; i < totalSize; ++i) {
       data[i] *= rhs;
@@ -82,8 +82,8 @@ public:
     return *this;
   }
 
-  constexpr CoordinateSpan<T>& operator-() {
-    int totalSize{ totalSize() };
+  CoordinateSpan<T>& operator-() {
+    int totalSize{ this->totalSize() };
     T *data = this->data.data();
     for (int i{ 0 }; i < totalSize; ++i) {
       data[i] = -data[i];

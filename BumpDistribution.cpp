@@ -1,7 +1,13 @@
-#include <assert.h>
+#include <cassert>
 #include <optional>
 #include <stdexcept>
+#include <cmath>
+#include <generator>
+#include <vector>
+#include <utility>
+#include <type_traits>
 #include "ext/rapidcsv/src/rapidcsv.h"
+#include "CoordinateSpan.h"
 #include "BumpDistribution.h"
 
 void BumpDistribution::computeForce(CoordinateSpan<const double> particlePositions, CoordinateSpan<double> forceOutput) const {
@@ -10,9 +16,9 @@ void BumpDistribution::computeForce(CoordinateSpan<const double> particlePositio
   double* forceOutputData{ forceOutput.raw() };
   const double* particlePositionsData{ particlePositions.raw() };
 
-  auto bumpResearchResult{ bumpsByPosition.find(particlePositions.raw()) };
+  auto bumpSearchResult{ bumps.find(std::make_pair(particlePositions, *this)) };
 
-  if (bumpResearchResult == bumpsByPosition.end()) {
+  if (bumpSearchResult == bumps.end()) {
     // Nothing was found => no force.
     for (int i{ 0 }; i < totalPhaseSpaceDimension; ++i) {
       forceOutputData[i] = 0;
@@ -20,8 +26,8 @@ void BumpDistribution::computeForce(CoordinateSpan<const double> particlePositio
     return;
   }
 
-  const double* bumpPosition{ bumpResearchResult->first };
-  const auto bumpData{ bumpResearchResult->second };
+  const double* bumpPosition{ positions.data() + bumpSearchResult.startPositionIndex };
+  const auto bumpData{ bumpSearchResult->second };
 
   // Calculate the difference part of the force output first, and simultaneously
   // calculate the square distance. If we're outside the bump, return a zero force
@@ -92,10 +98,10 @@ void BumpDistribution::toFile(const char* filename) const {
   }
 
   int i{ 0 };
-  for (const auto& [rawPosition, bumpData] : bumpsByPosition) {
+  for (const auto& bumpData : bumps) {
     csv.SetCell(widthIndex, i, std::sqrt(bumpData.squareWidth));
     csv.SetCell(heightIndex, i, bumpData.height);
-    CoordinateSpan<const double> position{ rawPosition, numParticles, numSpatialCoords };
+    CoordinateSpan<const double> position{ positions.data() + bumpData.startPositionIndex, numParticles, numSpatialCoords};
     for (int j{ 0 }, n{ startPositionIndex }; j < numParticles; ++j) {
       for (int k{ 0 }; k < numSpatialCoords; ++k, ++n) {
         csv.SetCell(n, i, position[j, k]);
@@ -154,14 +160,14 @@ BumpDistribution BumpDistribution::fromFile(const char* filename, double segment
   std::vector<double> positions{};
   const double inverseSegmentSpacing{ 1 / segmentSpacing };
   const int totalPhaseSpaceDimension{ spatialDimension.value() * numParticles };
-  BumpMap bumpsByPosition(numBumps, BumpDataHash(totalPhaseSpaceDimension, inverseSegmentSpacing), BumpDataEquality(totalPhaseSpaceDimension, inverseSegmentSpacing));
-  bumpsByPosition.reserve(numBumps);
-  positions.reserve(totalPhaseSpaceDimension * numBumps);
+  BumpSet bumps(numBumps);
+  positions.reserve(static_cast<size_t>(totalPhaseSpaceDimension) * numBumps);
   for (int i{ 0 }; i < numBumps; ++i) {
     double width{ csv.GetCell<double>(widthIndex, i) };
     double height{ csv.GetCell<double>(heightIndex, i)};
 
-    double* positionStart{ &positions[positions.size()] };
+    int startPositionIndex{ static_cast<int>(positions.size()) };
+    double* positionStart{ &positions[startPositionIndex] };
     for (int j{ 0 }, n{ 0 }; j < numParticles; ++j) {
       for (int k{ 0 }; k < spatialDimension; ++k, ++n) {
         double positionComponent{ csv.GetCell<double>(positionIndices[n], i) };
@@ -169,13 +175,16 @@ BumpDistribution BumpDistribution::fromFile(const char* filename, double segment
       }
     }
 
-    if (bumpsByPosition.contains(positionStart)) {
+    if (bumps.contains(std::make_pair(CoordinateSpan<const double>(positionStart, numParticles, spatialDimension.value()), *this))) {
       throw std::runtime_error("Input CSV contains multiple bumps in one segment.");
     }
-    bumpsByPosition.insert({ positionStart, BumpData(width, height) });
-    return BumpDistribution(std::move(positions), std::move(bumpsByPosition), inverseSegmentSpacing, numBumps, numParticles, spatialDimension.value());
+    bumps.insert(BumpData(width, height, startPositionIndex));
   }
+
+  return BumpDistribution(std::move(positions), std::move(bumps), inverseSegmentSpacing, numBumps, numParticles, spatialDimension.value());
 }
+
+size_t getHashForPosition(CoordinateSpan<const double> position, const BumpDistribution& distribution) const;
 
 inline bool BumpDistribution::BumpDataEquality::operator()(const double* firstPosition, const double* secondPosition) const {
   for (int i{ 0 }; i < totalPhaseSpaceDimension; ++i) {

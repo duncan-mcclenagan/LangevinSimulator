@@ -36,7 +36,7 @@ private:
     using is_transparent = void;
 
     BumpDataEquality(std::shared_ptr<const std::vector<double>> positions, double inverseSegmentSpacing, int totalPhaseSpaceDimension)
-      : positions(std::move(positions)), inverseSegmentSpacing(inverseSegmentSpacing), totalPhaseSpaceDimension(totalPhaseSpaceDimension) {}
+      : positions(positions), inverseSegmentSpacing(inverseSegmentSpacing), totalPhaseSpaceDimension(totalPhaseSpaceDimension) {}
 
     bool operator()(const BumpData& first, const BumpData& second) const;
 
@@ -70,7 +70,7 @@ private:
     using is_transparent = void;
 
     BumpDataHasher(std::shared_ptr<const std::vector<double>> positions, double inverseSegmentSpacing, int totalPhaseSpaceDimension)
-      : positions(std::move(positions)), inverseSegmentSpacing(inverseSegmentSpacing), totalPhaseSpaceDimension(totalPhaseSpaceDimension) {}
+      : positions(positions), inverseSegmentSpacing(inverseSegmentSpacing), totalPhaseSpaceDimension(totalPhaseSpaceDimension) {}
 
     size_t operator()(const BumpData& data) const;
 
@@ -156,13 +156,14 @@ public:
       }
 
       // Advance right-most position unless it takes us beyond the range, in which case reset it and advance the next right-most position, etc.
+      // But don't reset the left index, because it needs to overflow to trigger the end of the loop.
       for (int i{ totalPhaseSpaceDimension - 1 }; i >= 0; --i) {
         if (++indices[i] < numSegmentsInOneDimension) break;
-        else indices[i] = 0;
+        else if (i > 0) indices[i] = 0;
       }
     }
 
-    return BumpDistribution(positions,
+    return BumpDistribution(std::move(positions),
       std::move(bumps),
       inverseSegmentSpacing,
       numParticles,

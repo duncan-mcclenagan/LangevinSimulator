@@ -2,12 +2,15 @@
 #include <cmath>
 #include <iostream>
 #include <random>
+#include <vector>
 #include "BumpDistribution.h"
 #include "EntropyCalculator.h"
 #include "PhaseCloud.h"
+#include "CoordinateSpan.h"
 
 void runSimulation();
 PhaseCloud createPhaseCloud(int numPoints, double velocitySpread, double positionSpread, int numParticles, int spatialDimension);
+void computeForce(const BumpDistribution& bumps, CoordinateSpan<double> force, CoordinateSpan<double> position);
 
 class BumpGenerator {
 
@@ -59,7 +62,7 @@ void runSimulation() {
   constexpr int numSteps{ 50000 };
   constexpr int numPoints{ 10000 };
   constexpr int spatialDimension{ 2 };
-  constexpr int numParticles{ 1 };
+  constexpr int numParticles{ 2 };
   
   constexpr double dampingCoefficient{ 0.03 };
   constexpr double beta{ 2E5 };
@@ -83,8 +86,10 @@ void runSimulation() {
   ) };
 
   EntropyCalculator entropyCalculator{};
-  const double initialXEntropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps, 0, 0) };
-  std::cout << "Initial entropy: " << initialXEntropy << "\n";
+  const double initialX1Entropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps, 0, 0) };
+  const double initialY2Entropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps, 1, 1) };
+  std::cout << "Initial particle 1 X entropy: " << initialX1Entropy << "\n";
+  std::cout << "Initial particle 2 Y entropy: " << initialY2Entropy << "\n";
 
   std::random_device randomDevice;
   std::mt19937_64 generator(randomDevice());
@@ -101,7 +106,7 @@ void runSimulation() {
     // @todo Check this algorithm...
     for (auto [position, velocity] : phaseCloud.enumeratePhasePoints()) {
       // First reversible force update.
-      bumps.computeForce(position.asConst(), force);
+      computeForce(bumps, force, position);
 
       double* const rawPositionStart{ position.raw() };
       double* const rawVelocityStart{ velocity.raw() };
@@ -120,7 +125,7 @@ void runSimulation() {
       }
 
       // Reversible force update. TODO: Should this be here?
-      bumps.computeForce(position.asConst(), force);
+      computeForce(bumps, force, position);
 
       rawPosition = rawPositionStart;
       rawVelocity = rawVelocityStart;
@@ -137,9 +142,16 @@ void runSimulation() {
 
     if (i % 100 == 0) {
       double currentXEntropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps, 0, 0) };
-      std::cout << "Time " << (i * timeStep) << ". Entropy: " << currentXEntropy << "\r";
+      double currentYEntropy{ entropyCalculator.calculateEntropy(phaseCloud, bumps, 1, 1) };
+      std::cout << "Time " << (i * timeStep) << ". Particle 1 X entropy: " << currentXEntropy << ". Particle 2 Y entropy: " << currentYEntropy << "\r";
     }
   }
+}
+
+void computeForce(const BumpDistribution& bumps, CoordinateSpan<double> force, CoordinateSpan<double> position) {
+  bumps.computeForce(position.asConst(), force);
+  // Add a constant "spring force" to the Y component of the second particle.
+  force[1, 1] -= position[1, 1];
 }
 
 PhaseCloud createPhaseCloud(int numPoints, double velocitySpread, double positionSpread, int numParticles, int spatialDimension) {

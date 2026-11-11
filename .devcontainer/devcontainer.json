@@ -14,7 +14,6 @@
       "extensions": [
         "eamodio.gitlens",
         "james-yu.latex-workshop",
-        "llvm-vs-code-extensions.vscode-clangd",
         "ms-vscode.cmake-tools",
         "ms-vscode.cpp-devtools",
         "ms-vscode.cpptools",

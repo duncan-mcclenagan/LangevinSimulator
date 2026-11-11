@@ -20,7 +20,9 @@
         "ms-vscode.cpptools-extension-pack",
         "ms-vscode.cpptools-themes",
         "Anthropic.claude-code",
-        "redhat.vscode-yaml"
+        "redhat.vscode-yaml",
+        "leanprover.lean4",
+        "tamasafe.even-better-toml"
       ]
     }
   }

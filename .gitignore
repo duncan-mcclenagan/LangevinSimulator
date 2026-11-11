@@ -8,3 +8,7 @@ CMakeFiles/
 cmake_install.cmake
 compile_commands.json
 CTestTestfile.cmake
+
+# Lean/Lake-generated files
+.lake/
+/lake-packages/

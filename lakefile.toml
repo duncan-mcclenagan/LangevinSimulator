@@ -1,0 +1,11 @@
+name = "NoneqControl"
+version = "0.1.0"
+defaultTargets = ["NoneqControl"]
+
+[[require]]
+name = "Physlib"
+path = "physlib"
+
+[[lean_lib]]
+name = "NoneqControl"
+srcDir = "lean"

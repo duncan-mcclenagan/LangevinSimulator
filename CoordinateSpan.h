@@ -92,11 +92,11 @@ public:
   }
 
   friend bool operator==(const CoordinateSpan<T>& a, const CoordinateSpan<T>& b) {
-    if (a.size() != b.size()) {
+    if (a.numParticles != b.numParticles || a.spatialDimension != b.spatialDimension) {
       return false;
     }
-    for (int i{ 0 }; i < a.size(); ++i) {
-      for (int j{ 0 }; j < a.spatialDimension(); ++j) {
+    for (int i{ 0 }; i < a.numParticles; ++i) {
+      for (int j{ 0 }; j < a.spatialDimension; ++j) {
         if (a[i, j] != b[i, j]) {
           return false;
         }
@@ -114,11 +114,9 @@ namespace std {
     size_t operator()(const CoordinateSpan<T>& span) const {
       size_t hash = 0;
       std::hash<T> hasher;
-      for (int i{ 0 }; i < span.size(); ++i) {
-        // TODO: Make this loop more "constexpr" using templates.
-        for (int j{ 0 }; j < span.spatialDimension(); ++j) {
-          hash ^= hasher(span[i, j]) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        }
+      const T* data{ span.raw() };
+      for (size_t i{ 0 }; i < span.totalSize(); ++i) {
+        hash ^= hasher(data[i]) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
       }
       return hash;
     }
